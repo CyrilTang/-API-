@@ -8,6 +8,7 @@
 # ver 1.0  By anYun	2021.12.20
 # https://deyun.fun     https://doc.iquan.fun
 # https://www.cyrilstudio.top/  梦溪博客
+# QQ群：429296856
 
 # 数据库信息
 dbuser='用户名'
@@ -20,50 +21,58 @@ client_id='' #client_id
 client_secret='' #client_id
 acc_token=$(curl -X GET "https://openapi.baidu.com/oauth/2.0/token?grant_type=client_credentials&client_id=${client_id}&client_secret=${client_secret}&scope=smartapp_snsapi_base" | jq '.access_token' | cut -d'"' -f2)
 
-# 天级已推 ID 日志存放路径
+# 设置推送数量
+# 计数从 0 开始，所以如果推送 100 条就要减一 即 99
+day_num=100
+week_num=1500
 
-baidu_day=$(cat /www/day.txt)
-baidu_week=$(cat /www/week.txt)
-arr_cid=($( mysql -u ${dbuser} -p${dbpasswd} -e "select ID from ${dbname}.wp_posts where post_status='publish' and post_type='post' and NOT ID IN (${baidu_day}) limit 9;" | awk '{print $1}' | grep -vE 'cid|ID' | tr '\n' ' '))
+# 百度 key
+client_id='NDLtYeQeRjWXDzGqa4daAFkEBEfkoxGU'
+client_secret='19Ik5haFcVKKzQXxnkqfedxzoNFfGPYW'
+acc_token=$(curl -X GET "https://openapi.baidu.com/oauth/2.0/token?grant_type=client_credentials&client_id=${client_id}&client_secret=${client_secret}&scope=smartapp_snsapi_base" | jq '.access_token' | cut -d'"' -f2)
 
-# echo ${arr_cid[*]}
-for (( i=0;i<${#arr_cid[@]};i++ ))
+# 日志文件生成
+today=$(date "+%F")
+logfile="/www/wwwroot/Shell_Script/logs/${today}.log"
+if [ ! -e ${logfile} ];then
+	echo -e "${today}	推送日志\n\n" > "${logfile}"
+fi
+
+# 天推送
+# 获取需要未推送的 ID 
+day_arr_cid=($( mysql -u ${dbuser} -p${dbpasswd} -e "select ID from ${dbname}.wp_posts where (post_status='publish' and post_type='post' and day='N')  limit ${day_num};exit;" | awk '{print $1}' | grep -vE 'cid|ID' | tr '\n' ' '))
+for (( i=0;i<=${#day_arr_cid[@]};i++ ))
 do
-    # 天推送
-	grep -w ${arr_cid[$i]} '/www/day.txt'
-	if [ $? -ne 0 ];then
-		time_now=$(date "+%F %H:%M:%S")
-		statusno=$(curl -H "application/x-www-form-urlencoded" -X POST -d "type=1&url_list=pages/detail/detail?id=${arr_cid[$i]}" "https://openapi.baidu.com/rest/2.0/smartapp/access/submitsitemap/api?access_token=${acc_token}" | jq '.errno' | cut -d '"' -f2 )
-		
-		# 成功推送就记录相应的 ID 到 success 文件
-		if [ ${statusno} == '0' ];then
-			echo -e "${baidu_day},${arr_cid[$i]}\c" > '/www/day.txt'
-			echo -e "天级推送：${time_now} ID ==> ${arr_cid[$i]}  推送成功\n" >> '/www/baidu_logs.log'
-		elif [ ${statusno} == '100110007' ];then
-			echo -e "天级推送：${time_now} ID ==> ${arr_cid[$i]}  推送失败：数量超限\n" >> '/www/baidu_logs.log'
-			break
-		fi
+	time_now=$(date "+%F %H:%M:%S")
+	statusno=$(curl -H "application/x-www-form-urlencoded" -X POST -d "type=1&url_list=pages/detail/detail?id=${day_arr_cid[$i]}" "https://openapi.baidu.com/rest/2.0/smartapp/access/submitsitemap/api?access_token=${acc_token}" | jq '.errno' | cut -d '"' -f2 )
+	if [ ${statusno} == '0' ];then
+		mysql -u ${dbuser} -p${dbpasswd} -e "update ${dbname}.wp_posts set day='Y' where ID=${day_arr_cid[$i]};exit;"
+		echo "天级推送：${time_now} ID ==> ${day_arr_cid[$i]}  推送成功" >> "${logfile}"
+	elif [ ${statusno} == '100110007' ];then
+		echo "天级推送：${time_now} ID ==> ${day_arr_cid[$i]}  推送失败：数量超限" >> "${logfile}"
+		break
 	fi
-	
 done
 
 # 周推送
-arr_cid=($( mysql -u ${dbuser} -p${dbpasswd} -e "select ID from ${dbname}.wp_posts where post_status='publish' and post_type='post' and NOT ID IN (${baidu_week}) limit 99;" | awk '{print $1}' | grep -vE 'cid|ID' | tr '\n' ' '))
-for (( i=0;i<${#arr_cid[@]};i++ ))
+week_arr_cid=($( mysql -u ${dbuser} -p${dbpasswd} -e "select ID from ${dbname}.wp_posts where (post_status='publish' and post_type='post' and week='N') limit ${week_num};exit;" | awk '{print $1}' | grep -vE 'cid|ID' | tr '\n' ' '))
+for (( i=0;i<${#week_arr_cid[@]};i++ ))
 do	
-	# 周推送
-	grep -w ${arr_cid[$i]} '/www/wwwroot/Shell_Script/week.txt'
-	if [ $? -ne 0 ];then
-		time_now=$(date "+%F %H:%M:%S")
-		statusno=$(curl -H "application/x-www-form-urlencoded" -X POST -d "type=0&url_list=pages/detail/detail?id=${arr_cid[$i]}" "https://openapi.baidu.com/rest/2.0/smartapp/access/submitsitemap/api?access_token=${acc_token}" | jq '.errno' | cut -d '"' -f2 )
-		# 成功推送就记录相应的 ID 到 success 文件
-		if [ ${statusno} == '0' ];then
-			echo -e "${baidu_week},${arr_cid[$i]}\c" >> '/www/week.txt'
-			echo -e "周级推送：${time_now} ID ==> ${arr_cid[$i]}  推送成功\n" >> '/www/baidu_logs.log'
-		elif [ ${statusno} == '100110007' ];then
-			echo -e "周级推送：${time_now} ID ==> ${arr_cid[$i]}  推送失败：数量超限\n" >> '/www/baidu_logs.log'
-			break
-		fi
-	fi	
+	time_now=$(date "+%F %H:%M:%S")
+	statusno=$(curl -H "application/x-www-form-urlencoded" -X POST -d "type=0&url_list=pages/detail/detail?id=${week_arr_cid[$i]}" "https://openapi.baidu.com/rest/2.0/smartapp/access/submitsitemap/api?access_token=${acc_token}" | jq '.errno' | cut -d '"' -f2 )
+	# 成功推送就记录相应的 ID 到 week.txt 文件
+	if [ ${statusno} == '0' ];then
+		mysql -u ${dbuser} -p${dbpasswd} -e "update ${dbname}.wp_posts set week='Y' where ID=${week_arr_cid[$i]};exit;"
+		echo "周级推送：${time_now} ID ==> ${week_arr_cid[$i]}  推送成功" >> "${logfile}"
+	elif [ ${statusno} == '100110007' ];then
+		echo "周级推送：${time_now} ID ==> ${week_arr_cid[$i]}  推送失败：数量超限" >> "${logfile}"
+		break
+	fi
 done
-history -c -w
+
+# 日志文件清理
+find "${fdir}/logs/" -mtime +3 -name "*.log" -exec -rm -f {} \;
+
+# 历史命令删除
+# history -c -w
+echo > '/root/.bash_history'
