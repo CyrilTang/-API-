@@ -27,8 +27,8 @@ day_num=100
 week_num=1500
 
 # 百度 key
-client_id='NDLtYeQeRjWXDzGqa4daAFkEBEfkoxGU'
-client_secret='19Ik5haFcVKKzQXxnkqfedxzoNFfGPYW'
+client_id='NDLtYeQeRjWXEfkoxGU'
+client_secret='19Ik5haFcVKfedxzoNFfGPYW'
 acc_token=$(curl -X GET "https://openapi.baidu.com/oauth/2.0/token?grant_type=client_credentials&client_id=${client_id}&client_secret=${client_secret}&scope=smartapp_snsapi_base" | jq '.access_token' | cut -d'"' -f2)
 
 # 日志文件生成
